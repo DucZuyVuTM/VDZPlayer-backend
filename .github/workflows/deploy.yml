@@ -1,0 +1,73 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    tags:
+      - 'v*' # In GitHub we still use versions type 'v*'
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Process that remove letter 'v' and lowercase repository name for Docker Hub
+      - name: Prepare names
+        shell: bash
+        run: |
+          # Remove letter v in version tag for Docker Image
+          CLEAN_TAG=${GITHUB_REF_NAME#v}
+          echo "CLEAN_TAG=$CLEAN_TAG" >> $GITHUB_ENV
+
+          # Change Repository name to lowercase
+          REPO_LOWER=$(echo "${{ github.event.repository.name }}" | tr '[:upper:]' '[:lower:]')
+          echo "REPO_LOWER=$REPO_LOWER" >> $GITHUB_ENV
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          # Use variable that stores repository name and clean tag
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/${{ env.REPO_LOWER }}:${{ env.CLEAN_TAG }}
+            ${{ secrets.DOCKER_USERNAME }}/${{ env.REPO_LOWER }}:latest
+
+  deploy-to-render:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy or Update Service
+        run: |
+          # 1. Check if the service exists
+          SERVICE_ID=$(curl -s https://api.render.com/v1/services?name=${{ github.event.repository.name }} \
+            -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" | jq -r '.[0].id')
+
+          # 2. If the service exists and if not
+          if [ "$SERVICE_ID" != "null" ]; then
+            echo "Service exists. Triggering deploy..."
+            curl -X POST https://api.render.com/v1/services/$SERVICE_ID/deploys \
+              -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}"
+          else
+            echo "Service not found. Creating new service..."
+            curl -X POST https://api.render.com/v1/services \
+              -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
+              -H "Content-Type: application/json" \
+              -d '{
+                "type": "web_service",
+                "name": "${{ github.event.repository.name }}",
+                "env": "docker",
+                "repo": "", 
+                "dockerDetails": {
+                  "imageFullTag": "${{ secrets.DOCKER_USERNAME }}/${{ env.REPO_LOWER }}:latest"
+                },
+                "plan": "starter"
+              }'
+          fi
