@@ -6,7 +6,7 @@ ENV UV_PROJECT_ENVIRONMENT=/usr/local
 
 COPY requirements.txt .
 
-RUN uv pip install --no-cache -r requirements.txt
+RUN uv pip install --no-cache --system -r requirements.txt
 
 COPY app/ ./app/
 
