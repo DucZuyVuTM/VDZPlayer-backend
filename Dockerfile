@@ -1,10 +1,13 @@
-FROM python:3.11-slim
+FROM ghcr.io/astral-sh/uv:python3.12-alpine
 
 WORKDIR /app
 
+ENV UV_PROJECT_ENVIRONMENT=/usr/local
+
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+
+RUN uv pip install --no-cache -r requirements.txt
 
 COPY app/ ./app/
 
-CMD ["uvicorn", "app.main:app", "--reload"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
