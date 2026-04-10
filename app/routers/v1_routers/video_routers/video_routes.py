@@ -28,4 +28,4 @@ async def stream_video(
     ),
     service: VideoService = Depends(get_video_service)
 ):
-    return await service.get_info(url)
+    return await service.stream_video(url)
