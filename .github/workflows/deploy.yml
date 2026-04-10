@@ -46,23 +46,26 @@ jobs:
     steps:
       - name: Deploy or Update Service
         run: |
+          set -e
+
           # 1. Check if the service exists
-          SERVICE_ID=$(curl -s https://api.render.com/v1/services?name=${{ github.event.repository.name }} \
+          SERVICE_ID=$(curl --fail -s https://api.render.com/v1/services?name=${{ github.event.repository.name }} \
             -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" | jq -r '.[0].id')
 
           # 2. If the service exists and if not
           if [ "$SERVICE_ID" != "null" ]; then
             echo "Service exists. Triggering deploy..."
-            curl -X POST https://api.render.com/v1/services/$SERVICE_ID/deploys \
+            curl --fail -X POST https://api.render.com/v1/services/$SERVICE_ID/deploys \
               -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}"
           else
             echo "Service not found. Creating new service..."
-            curl -X POST https://api.render.com/v1/services \
+            curl --fail -X POST https://api.render.com/v1/services \
               -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
               -H "Content-Type: application/json" \
               -d '{
                 "type": "web_service",
                 "name": "${{ github.event.repository.name }}",
+                "ownerId": "tea-csplf80gph6c73edv33g",
                 "env": "docker",
                 "repo": "", 
                 "dockerDetails": {
