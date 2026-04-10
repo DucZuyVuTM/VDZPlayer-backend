@@ -59,18 +59,23 @@ jobs:
               -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}"
           else
             echo "Service not found. Creating new service..."
-            curl --fail -X POST https://api.render.com/v1/services \
+            curl -s -X POST https://api.render.com/v1/services \
               -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
               -H "Content-Type: application/json" \
               -d '{
                 "type": "web_service",
                 "name": "${{ github.event.repository.name }}",
-                "ownerId": "tea-csplf80gph6c73edv33g",
-                "env": "docker",
-                "repo": "", 
-                "dockerDetails": {
-                  "imageFullTag": "${{ secrets.DOCKER_USERNAME }}/${{ env.REPO_LOWER }}:latest"
-                },
-                "plan": "starter"
-              }'
+                "ownerId": "${{ secrets.RENDER_OWNER_ID }}",
+                "repo": "https://github.com/${{ github.repository }}",
+                "autoDeploy": "no",
+                "serviceDetails": {
+                  "type": "web_service",
+                  "env": "docker",
+                  "region": "oregon",
+                  "plan": "starter",
+                  "dockerDetails": {
+                    "imageFullTag": "${{ secrets.DOCKER_USERNAME }}/${{ env.REPO_LOWER }}:latest"
+                  }
+                }
+              }' | jq
           fi
