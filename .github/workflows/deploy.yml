@@ -8,21 +8,23 @@ on:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    outputs:
+      repo_lower: ${{ steps.prep.outputs.repo_lower }}
+      clean_tag: ${{ steps.prep.outputs.clean_tag }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       # Process that remove letter 'v' and lowercase repository name for Docker Hub
       - name: Prepare names
+        id: prep
         shell: bash
         run: |
-          # Remove letter v in version tag for Docker Image
           CLEAN_TAG=${GITHUB_REF_NAME#v}
-          echo "CLEAN_TAG=$CLEAN_TAG" >> $GITHUB_ENV
+          echo "clean_tag=$CLEAN_TAG" >> $GITHUB_OUTPUT
 
-          # Change Repository name to lowercase
           REPO_LOWER=$(echo "${{ github.event.repository.name }}" | tr '[:upper:]' '[:lower:]')
-          echo "REPO_LOWER=$REPO_LOWER" >> $GITHUB_ENV
+          echo "repo_lower=$REPO_LOWER" >> $GITHUB_OUTPUT
 
       - name: Login to Docker Hub
         uses: docker/login-action@v3
@@ -37,8 +39,8 @@ jobs:
           push: true
           # Use variable that stores repository name and clean tag
           tags: |
-            ${{ secrets.DOCKER_USERNAME }}/${{ env.REPO_LOWER }}:${{ env.CLEAN_TAG }}
-            ${{ secrets.DOCKER_USERNAME }}/${{ env.REPO_LOWER }}:latest
+            ${{ secrets.DOCKER_USERNAME }}/${{ steps.prep.outputs.repo_lower }}:${{ steps.prep.outputs.clean_tag }}
+            ${{ secrets.DOCKER_USERNAME }}/${{ steps.prep.outputs.repo_lower }}:latest
 
   deploy-to-render:
     needs: build-and-push
@@ -48,34 +50,24 @@ jobs:
         run: |
           set -e
 
-          # 1. Check if the service exists
-          SERVICE_ID=$(curl --fail -s https://api.render.com/v1/services?name=${{ github.event.repository.name }} \
-            -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" | jq -r '.[0].id')
+          REPO_NAME="${{ needs.build-and-push.outputs.repo_lower }}"          
+          echo "Searching for service: $REPO_NAME"
 
-          # 2. If the service exists and if not
-          if [ "$SERVICE_ID" != "null" ]; then
-            echo "Service exists. Triggering deploy..."
-            curl --fail -X POST https://api.render.com/v1/services/$SERVICE_ID/deploys \
+          RESPONSE=$(curl -s "https://api.render.com/v1/services?name=$REPO_NAME" \
+            -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}")
+          
+          echo "Full API Response: $RESPONSE"
+          SERVICE_ID=$(echo $RESPONSE | jq -r '.[0].service.id // empty')
+
+          if [ -n "$SERVICE_ID" ] && [ "$SERVICE_ID" != "null" ]; then
+            echo "Service found with ID: $SERVICE_ID. Triggering deploy..."
+            curl --fail -X POST "https://api.render.com/v1/services/$SERVICE_ID/deploys" \
               -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}"
           else
-            echo "Service not found. Creating new service..."
-            curl -s -X POST https://api.render.com/v1/services \
-              -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
-              -H "Content-Type: application/json" \
-              -d '{
-                "type": "web_service",
-                "name": "${{ github.event.repository.name }}",
-                "ownerId": "${{ secrets.RENDER_OWNER_ID }}",
-                "repo": "https://github.com/${{ github.repository }}",
-                "autoDeploy": "no",
-                "serviceDetails": {
-                  "type": "web_service",
-                  "env": "docker",
-                  "region": "oregon",
-                  "plan": "starter",
-                  "dockerDetails": {
-                    "imageFullTag": "${{ secrets.DOCKER_USERNAME }}/${{ env.REPO_LOWER }}:latest"
-                  }
-                }
-              }' | jq
+            echo "--------------------------------------------------------"
+            echo "ERROR: Could not find service with name: $REPO_NAME"
+            echo "Please ensure the service name on Render is EXACTLY $REPO_NAME"
+            echo "If service is not created, please create it manually on Render Dashboard first."
+            echo "--------------------------------------------------------"
+            exit 1
           fi
