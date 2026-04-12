@@ -4,9 +4,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 PRODUCTION_ORIGIN = os.getenv("PRODUCTION_ORIGIN", "http://localhost:5173")
 
-origins = [
-    PRODUCTION_ORIGIN
-]
+origins = [PRODUCTION_ORIGIN]
+
 
 # CORS middleware
 def setup_cors(app):

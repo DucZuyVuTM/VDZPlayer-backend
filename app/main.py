@@ -7,7 +7,7 @@ from .routers.routes import api_router
 app = FastAPI(
     title="VDZPlayer API",
     description="API of VDZPlayer that can be used for processing videos and thumbnails.",
-    version="1.0.0"
+    version="1.0.0",
 )
 
 setup_cors(app)
@@ -20,7 +20,7 @@ def root():
     return {
         "message": "Subscription Management API",
         "docs": "/docs",
-        "redoc": "/redoc"
+        "redoc": "/redoc",
     }
 
 
