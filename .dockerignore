@@ -1,9 +1,11 @@
-.git
-.github
-.vscode
-__pycache__
-venv
+.git/
+.github/
+.vscode/
+__pycache__/
+pytest_cache/
+venv/
 
+*.pyc
 .env
 .gitignore
 db.sqlite3
