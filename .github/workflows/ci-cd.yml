@@ -1,0 +1,179 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    tags:
+      - 'v*' # In GitHub we still use versions type 'v*'
+
+jobs:
+  # CI
+  lint-and-format:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          # Token is required to push code after fixing
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install uv and Ruff
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          source $HOME/.cargo/env
+          uv venv
+          uv pip install ruff
+          # Activate the environment for the next commands in the next steps
+          echo "$GITHUB_WORKSPACE/.venv/bin" >> $GITHUB_PATH
+
+      - name: Fix PEP8 with Ruff
+        run: |
+          # --fix flag will automatically fix format and import errors
+          ruff format .
+          ruff check --fix .
+
+      - name: Commit any fixes
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add .
+          if ! git diff-index --quiet HEAD; then
+            git commit -m "Fix PEP8 with Ruff formatter"
+            git push origin HEAD:${{ github.event.repository.default_branch }}
+          else
+            echo "No formatting fixes needed."
+          fi
+
+  check-tests-existence:
+    needs: lint-and-format
+    runs-on: ubuntu-latest
+    outputs:
+      has_tests: ${{ steps.check.outputs.has_tests }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check for tests
+        id: check
+        run: |
+          # Check if folder tests/ or files test_*.py exist
+          if [ -d "tests" ] || [ -f "pytest.ini" ] || ls test_*.py 1> /dev/null 2>&1; then
+            echo "Tests found."
+            echo "has_tests=true" >> $GITHUB_OUTPUT
+          else
+            echo "--------------------------------------------------------"
+            echo "NOTE: Could not find pytest or test file(s)"
+            echo "--------------------------------------------------------"
+            echo "has_tests=false" >> $GITHUB_OUTPUT
+          fi
+
+  run-tests:
+    needs: check-tests-existence
+    if: needs.check-tests-existence.outputs.has_tests == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies and Pytest
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          source $HOME/.cargo/env
+          if [ -f "requirements.txt" ]; then uv pip install -r requirements.txt --system; fi
+          uv pip install pytest pytest-cov --system
+
+      - name: Run Pytest
+        run: |
+          # The most commonly used command: run tests + report coverage + print detailed results
+          pytest -v --junitxml=report.xml
+
+  # CD
+  build-and-push:
+    needs: [check-tests-existence, run-tests]
+    
+    # This job runs if there are no tests to run OR if the test job is successful.
+    if: |
+      always() &&
+      (needs.check-tests-existence.outputs.has_tests == 'false' ||
+      needs.run-tests.result == 'success')
+    
+    runs-on: ubuntu-latest
+    outputs:
+      repo_lower: ${{ steps.prep.outputs.repo_lower }}
+      clean_tag: ${{ steps.prep.outputs.clean_tag }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Process that remove letter 'v' and lowercase repository name for Docker Hub
+      - name: Prepare names
+        id: prep
+        shell: bash
+        run: |
+          CLEAN_TAG=${GITHUB_REF_NAME#v}
+          echo "clean_tag=$CLEAN_TAG" >> $GITHUB_OUTPUT
+
+          REPO_LOWER=$(echo "${{ github.event.repository.name }}" | tr '[:upper:]' '[:lower:]')
+          echo "repo_lower=$REPO_LOWER" >> $GITHUB_OUTPUT
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          # Use variable that stores repository name and clean tag
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/${{ steps.prep.outputs.repo_lower }}:${{ steps.prep.outputs.clean_tag }}
+            ${{ secrets.DOCKER_USERNAME }}/${{ steps.prep.outputs.repo_lower }}:latest
+
+  check-service:
+    needs: build-and-push
+    if: success()
+    runs-on: ubuntu-latest
+    outputs:
+      service_exists: ${{ steps.check.outputs.exists }}
+      service_id: ${{ steps.check.outputs.id }}
+    steps:
+      - name: Check Render Service
+        id: check
+        run: |
+          REPO_NAME="${{ needs.build-and-push.outputs.repo_lower }}"
+
+          RESPONSE=$(curl -s "https://api.render.com/v1/services?name=$REPO_NAME" \
+            -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}")
+
+          SERVICE_ID=$(echo $RESPONSE | jq -r '.[0].service.id // empty')
+
+          if [ -n "$SERVICE_ID" ] && [ "$SERVICE_ID" != "null" ]; then
+            echo "Service found: $SERVICE_ID"
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "id=$SERVICE_ID" >> $GITHUB_OUTPUT
+          else
+            echo "--------------------------------------------------------"
+            echo "NOTE: Could not find service with name: $REPO_NAME"
+            echo "If service is not created, please create it manually on Render Dashboard first."
+            echo "If service is created, please ensure the service name on Render is EXACTLY $REPO_NAME"            
+            echo "--------------------------------------------------------"
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+  deploy-to-render:
+    needs: check-service
+    if: success() && needs.check-service.outputs.service_exists == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render Deploy
+        run: |
+          set -e
+          SERVICE_ID="${{ needs.check-service.outputs.service_id }}"
+          
+          echo "Triggering deploy for Service ID: $SERVICE_ID"
+          curl --fail -X POST "https://api.render.com/v1/services/$SERVICE_ID/deploys" \
+            -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}"
