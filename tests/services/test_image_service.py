@@ -4,11 +4,12 @@ from unittest.mock import AsyncMock, patch
 
 from app.services.image_service import ImageService
 
+
 @pytest.mark.asyncio
 async def test_proxy_image_success():
     service = ImageService()
     url = "https://example.com/photo.jpg"
-    
+
     # Simulated successful response from httpx.
     mock_response = AsyncMock()
     mock_response.status_code = 200
@@ -20,6 +21,7 @@ async def test_proxy_image_success():
         assert response.status_code == 200
         assert response.body == b"fake_image_binary"
         assert response.media_type == "image/png"
+
 
 @pytest.mark.asyncio
 async def test_proxy_image_fetch_error():
