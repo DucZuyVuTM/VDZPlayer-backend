@@ -8,8 +8,6 @@ video_router = APIRouter(prefix="/videos", tags=["videos"])
 
 def get_video_service():
     return VideoService()
-
-
 @video_router.get("/info")
 async def get_info(
     url: str = Query(..., description="Video URL"),

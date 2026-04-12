@@ -40,6 +40,11 @@ jobs:
           git add .
           if ! git diff-index --quiet HEAD; then
             git commit -m "Fix PEP8 with Ruff formatter"
+
+            # Update tag
+            git tag -f ${{ github.ref_name }}
+            git push origin ${{ github.ref_name }} --force
+
             git push origin HEAD:${{ github.event.repository.default_branch }}
           else
             echo "No formatting fixes needed."
@@ -88,10 +93,10 @@ jobs:
           fi
           echo "$GITHUB_WORKSPACE/.venv/bin" >> $GITHUB_PATH
 
-      - name: Run Pytest
+      - name: Run Pytest without cache
         run: |
           # The most commonly used command: run tests + report coverage + print detailed results
-          pytest -v --junitxml=report.xml
+          pytest -v -p no:cacheprovider --junitxml=report.xml
 
   # CD
   build-and-push:
