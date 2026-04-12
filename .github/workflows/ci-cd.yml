@@ -135,7 +135,8 @@ jobs:
 
   check-service:
     needs: build-and-push
-    if: success()
+    # Always run if the previous job was completed successfully.
+    if: always() && needs.build-and-push.result == 'success'
     runs-on: ubuntu-latest
     outputs:
       service_exists: ${{ steps.check.outputs.exists }}
@@ -166,7 +167,10 @@ jobs:
 
   deploy-to-render:
     needs: check-service
-    if: success() && needs.check-service.outputs.service_exists == 'true'
+    if: |
+      always() && 
+      needs.check-service.result == 'success' && 
+      needs.check-service.outputs.service_exists == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Trigger Render Deploy
