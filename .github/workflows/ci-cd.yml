@@ -3,7 +3,7 @@ name: CI/CD Pipeline
 on:
   push:
     tags:
-      - 'v*' # In GitHub we still use versions type 'v*'
+      - 'v*'  # In GitHub we still use versions type 'v*'
 
 jobs:
   # CI
@@ -18,20 +18,16 @@ jobs:
           # Token is required to push code after fixing
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install uv and Ruff
-        run: |
-          curl -LsSf https://astral.sh/uv/install.sh | sh
-          source $HOME/.cargo/env
-          uv venv
-          uv pip install ruff
-          # Activate the environment for the next commands in the next steps
-          echo "$GITHUB_WORKSPACE/.venv/bin" >> $GITHUB_PATH
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true  # Enable cache for faster building
 
       - name: Fix PEP8 with Ruff
         run: |
           # --fix flag will automatically fix format and import errors
-          ruff format .
-          ruff check --fix .
+          uv run ruff format .
+          uv run ruff check --fix .
 
       - name: Commit any fixes
         run: |
@@ -81,17 +77,18 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+
       - name: Install dependencies and Pytest
         run: |
-          curl -LsSf https://astral.sh/uv/install.sh | sh
-          source $HOME/.cargo/env
-          uv venv
-          if [ -f "requirements.txt" ]; then
-            uv pip install -r requirements.txt;
+          if [ -f requirements.txt ]; then
+            uv pip install --system -r requirements.txt
+            uv pip install --system pytest pytest-cov
           else
-            uv pip install pytest pytest-cov;
+            echo "ERROR: requirements.txt not found!"
+            exit 1
           fi
-          echo "$GITHUB_WORKSPACE/.venv/bin" >> $GITHUB_PATH
 
       - name: Run Pytest without cache
         run: |
