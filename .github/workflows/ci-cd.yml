@@ -25,9 +25,12 @@ jobs:
 
       - name: Fix PEP8 with Ruff
         run: |
+          # uvx is a specialized command for running temporary tools
+          # from uv without requiring installation, which is similar to npx.
+          #
           # --fix flag will automatically fix format and import errors
-          uv run ruff format .
-          uv run ruff check --fix .
+          uvx ruff format .
+          uvx ruff check --fix .
 
       - name: Commit any fixes
         run: |
@@ -83,8 +86,13 @@ jobs:
       - name: Install dependencies and Pytest
         run: |
           if [ -f requirements.txt ]; then
-            uv pip install --system -r requirements.txt
-            uv pip install --system pytest pytest-cov
+            uv venv
+            uv pip install -r requirements.txt
+            uv pip install pytest pytest-cov
+
+            # Add the venv path to PATH
+            # so that subsequent steps can find it.
+            echo "$GITHUB_WORKSPACE/.venv/bin" >> $GITHUB_PATH
           else
             echo "ERROR: requirements.txt not found!"
             exit 1
