@@ -33,6 +33,8 @@ async def test_stream_video_invalid_url():
         await service.stream_video("not_a_url")
     assert exc.value.status_code == 400
     assert exc.value.detail == "URL is invalid"
+
+
 @pytest.mark.asyncio
 async def test_stream_video_returns_streaming_response():
     service = VideoService()
