@@ -194,3 +194,21 @@ jobs:
           echo "Triggering deploy for Service ID: $SERVICE_ID"
           curl --fail -X POST "https://api.render.com/v1/services/$SERVICE_ID/deploys" \
             -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}"
+
+  send_message:
+    needs: [check-service, deploy-to-render]
+
+    if: |
+      always() &&
+      (needs.check-service.outputs.service_exists == 'false' ||
+      needs.deploy-to-render.result == 'success')
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Send message
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.TELEGRAM_TO }}
+          token: ${{ secrets.TELEGRAM_TOKEN }}
+          message: Workflow of the project ${{ github.event.repository.name }} is completed successfully!
