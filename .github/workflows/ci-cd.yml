@@ -18,19 +18,15 @@ jobs:
           # Token is required to push code after fixing
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Setup uv
-        uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true  # Enable cache for faster building
-
       - name: Fix PEP8 with Ruff
-        run: |
-          # uvx is a specialized command for running temporary tools
-          # from uv without requiring installation, which is similar to npx.
-          #
-          # --fix flag will automatically fix format and import errors
-          uvx ruff format .
-          uvx ruff check --fix .
+        uses: astral-sh/ruff-action@v3
+        with:
+          args: "check --fix"
+
+      - name: Format code with Ruff
+        uses: astral-sh/ruff-action@v3
+        with:
+          args: "format"
 
       - name: Commit any fixes
         run: |
@@ -82,6 +78,8 @@ jobs:
 
       - name: Setup uv
         uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true  # Enable cache for faster building
 
       - name: Install dependencies and Pytest
         run: |
